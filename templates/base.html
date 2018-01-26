@@ -1,0 +1,224 @@
+{% extends "bootstrap/base.html" %}
+{% block title %}Tabletop Demo{% endblock %}
+{% block head %}
+
+<link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Lato">
+<script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/tabletop.js/1.5.1/tabletop.min.js'></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css"/>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+<style>
+.navbar {
+	position: absolute;
+	background-color: #000000;
+	opacity: 0.65;
+	margin-left: 8em;
+	z-index: 5;
+	font-family: 'Lato', sans-serif;
+	border: 3px;
+	border-radius: .3em;
+}
+
+#map {
+	position: absolute;
+	top: 0em;
+	#bottom: -2.5em;
+	z-index: 3;
+	height: 100%;
+	width: 100%;
+}
+</style>
+{{super()}}
+{% endblock %}
+{% block navbar %}
+<div class="navbar navbar-inverse" role="navigation">
+    <div class="container">
+	     <div class="navbar-header" id="navhover">
+            <a class="navbar-brand" href="/" style="margin-left:-2em;">Tabletop Demo</a>
+	     </div>
+    </div>
+</div>
+{% endblock %}
+{% block content %}
+<div class="jumbotron" id='map'></div>
+{% endblock %}
+{% block scripts %}
+<script type="text/javascript">
+    /*  document.addEventListener('DOMContentLoaded', function() {
+        var URL = '1qyhvJKLyF5s2mrVgRUKFzTjHJk6Zip7wRYBltig21yA'
+        Tabletop.init({key: URL, callback: showInfo, simpleSheet: true})
+      })
+      function showInfo (data) {
+        console.log(data)
+        var popup = "hello"
+        var mapOptions = {
+          data: data,
+          mapDiv: 'map',
+          geoJSONincludes: ['name', 'dummy'],
+          template: popup
+        }
+        Sheetsee.loadMap(mapOptions)
+      }*/
+
+function init() {
+  Tabletop.init( { key: 'https://docs.google.com/spreadsheets/d/1qyhvJKLyF5s2mrVgRUKFzTjHJk6Zip7wRYBltig21yA/pubhtml',
+                   callback: function(data, tabletop) {
+                       console.log(data)
+                   },
+                   simpleSheet: true } )
+}
+window.addEventListener('DOMContentLoaded', init)
+var cartoLink = '<a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="http://cartodb.com/attributions">CartoDB</a>';
+var cartoUrl = 'http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
+//var cartoLink = 'Imagery from <a href="http://giscience.uni-hd.de/">GIScience Research Group @ University of Heidelberg</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+//var cartoUrl = 'http://korona.geog.uni-heidelberg.de/tiles/roadsg/x={x}&y={y}&z={z}';
+var cartoAttr = '&copy; ' + cartoLink;
+var mountUrl = 'http://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}';
+var mountAttr = 'Tiles &copy; Esri &mdash; Source: Esri';
+var satUrl = 'http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+var satAttr = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community';
+var cartoMap = L.tileLayer(cartoUrl, {attribution: cartoAttr});
+var mountMap = L.tileLayer(mountUrl, {attribution: mountAttr});
+var satMap = L.tileLayer(satUrl, {attribution: satAttr});
+var map = L.map('map', {layers: [cartoMap]}).setView([21.133391, 92.187985], 10);
+var baseLayers = {
+  'Road': cartoMap,
+  'Terrain': mountMap,
+  'Satellite': satMap
+};
+
+if (window.location.hash === "#cluster") {
+	// Set up cluster group
+	var markers = new L.MarkerClusterGroup();
+} else {
+	// Otherwise set up normal groupx`
+	var markers = new L.LayerGroup();
+}
+
+// Google Docs spreadsheet key
+var spreadsheet_key = '1qyhvJKLyF5s2mrVgRUKFzTjHJk6Zip7wRYBltig21yA';
+
+// Name of lat, long columns in Google spreadsheet
+var lat_column = 'latitude';
+var long_column = 'longitude';
+
+// Marker options
+var radius = 8;
+// Regular fill
+var fill_color = "#023858";
+var border_color = "#FFF";
+// Hover
+var fill_color_hover = "#FFF";
+var border_color_hover = "#333"
+
+var global_markers_data;
+
+// Function that creates our popup
+function generatePopup(content){
+    // Generate header
+	var popup_header = "<h4>" + content['name'] + "</h4>"
+
+	// Generate content
+	var popup_content = '<p>' + content['dummy'] + '</p>'
+
+	return popup_header + popup_content;
+}
+
+// This goes through our JSON file and puts markers on map
+function loadMarkersToMap(markers_data) {
+	// If we haven't captured the Tabletop data yet
+	// We'll set the Tabletop data to global_markers_data
+	if (global_markers_data !== undefined) {
+		markers_data = global_markers_data;
+	// If we have, we'll load global_markers_data instead of loading Tabletop again
+	} else {
+		global_markers_data = markers_data;
+	}
+
+	for (var num = 0; num < markers_data.length; num++) {
+		// Capture current iteration through JSON file
+		current = markers_data[num];
+
+		// Add lat, long to marker
+		var marker_location = new L.LatLng(current[lat_column], current[long_column]);
+
+		// Determine radius of the circle by the value in total
+		// radius_actual = Math.sqrt(current['total'] / 3.14) * 2.8;
+
+		// Options for our circle marker
+		var layer_marker = L.circleMarker(marker_location, {
+			radius: radius,
+			fillColor: fill_color,
+			color: border_color,
+			weight: 1,
+			opacity: 1,
+			fillOpacity: 0.8
+		});
+
+		// Generate popup
+		layer_marker.bindPopup( generatePopup(current) );
+
+		// Add events to marker
+		(function (num){
+			// Must call separate popup(e) function to make sure right data is shown
+			function mouseOver(e) {
+				var layer_marker = e.target;
+		        layer_marker.setStyle({
+		            radius: radius + 1,
+		            fillColor: fill_color_hover,
+		            color: border_color_hover,
+		            weight: 2,
+		            opacity: 1,
+		            fillOpacity: 1
+				});
+				// layer_marker.openPopup();
+		    }
+
+		    // What happens when mouse leaves the marker
+		    function mouseOut(e) {
+				var layer_marker = e.target;
+				layer_marker.setStyle({
+					radius: radius + 1,
+					fillColor: fill_color,
+					color: border_color,
+					weight: 1,
+					opacity: 1,
+					fillOpacity: 0.8
+		        });
+		        // layer_marker.closePopup();
+		    }
+
+		    // Call mouseover, mouseout functions
+		    layer_marker.on({
+		    	mouseover: mouseOver,
+		    	mouseout: mouseOut
+		    });
+
+		})(num)
+
+		// Add to feature group
+		markers.addLayer(layer_marker);
+	}
+
+	// Add feature group to map
+	map.addLayer(markers);
+
+	// Clear load text
+	// $('.sidebar_text_intro').html('');
+};
+
+// Pull data from Google spreadsheet via Tabletop
+function initializeTabletopObjectMarkers(){
+	Tabletop.init({
+    	key: spreadsheet_key,
+    	callback: loadMarkersToMap,
+    	simpleSheet: true,
+    	debug: false
+    });
+}
+
+// Add JSON data to map
+// If not done with map-tabletop-geojson.js
+initializeTabletopObjectMarkers();
+</script>
+{% endblock %}
